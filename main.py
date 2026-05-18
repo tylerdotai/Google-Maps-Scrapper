@@ -253,30 +253,12 @@ def scrape_places(search_for: str, total: int, headless: bool = True,
         page.set_default_timeout(30000)
 
         try:
-            logging.info(f"Opening Google Maps with search: {search_for}")
-            page.goto("https://www.google.com/maps", timeout=60000)
-            page.wait_for_timeout(1500)
-
-            # Accept cookies if prompt appears
-            try:
-                page.locator('button:has-text("Accept all"), button:has-text("Reject")').first.click()
-                page.wait_for_timeout(500)
-            except Exception:
-                pass
-
-            # Fill search box
-            search_selectors = [
-                '//input[@id="searchboxinput"]',
-                '//input[@placeholder="Search Google Maps"]',
-                '//input[contains(@class,"searchbox")]',
-            ]
-            for sel in search_selectors:
-                if page.locator(sel).count() > 0:
-                    page.locator(sel).fill(search_for)
-                    page.keyboard.press("Enter")
-                    break
-
-            page.wait_for_timeout(3000)
+            # Use direct search URL to avoid cookie overlay blocking search box
+            encoded_query = search_for.replace(' ', '+')
+            search_url = f"https://www.google.com/maps/search/{encoded_query}"
+            logging.info(f"Opening Google Maps search: {search_for}")
+            page.goto(search_url, timeout=60000)
+            page.wait_for_timeout(4000)  # Wait for results to render
 
             # Scroll to load results
             found = scroll_to_bottom(page)
@@ -319,11 +301,13 @@ def scrape_places(search_for: str, total: int, headless: bool = True,
                     listing.click()
                     page.wait_for_timeout(2000)
 
-                    # Wait for detail panel to load
-                    page.wait_for_selector(
-                        '//h1[contains(@class,"DUwDvf")], //h1[contains(@class,"header")]',
-                        timeout=8000
-                    )
+                    # Wait for detail panel to load (h1 name tag appears in detail panel)
+                    for selector in ['//h1[contains(@class,"DUwDvf")]', '//h1']:
+                        try:
+                            page.wait_for_selector(selector, timeout=5000)
+                            break
+                        except Exception:
+                            continue
                     page.wait_for_timeout(500)
 
                     place = extract_place(page)
