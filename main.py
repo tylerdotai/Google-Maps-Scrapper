@@ -1,6 +1,6 @@
+import re
 import logging
 import argparse
-import platform
 import time
 import os
 from typing import List, Optional
@@ -52,6 +52,37 @@ def extract_text_multi(page: Page, xpaths: List[str]) -> str:
     return ""
 
 
+def clean_text(raw: str) -> str:
+    """Remove control chars, icon characters, extra whitespace from raw DOM text."""
+    if not raw:
+        return ""
+    # Strip C0/C1 control chars except tab/newline/cr
+    raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]+', '', raw)
+    # Remove emoji, misc symbols, dingbats, transport, PUA
+    raw = re.sub(r'[\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF\uE000-\uF8FF]+', ' ', raw)
+    # Remove middle dots and bullet separators
+    raw = re.sub(r'\s*[⋅·•·]\s*', ' ', raw)
+    # Collapse whitespace
+    raw = re.sub(r'\s+', ' ', raw).strip()
+    return raw
+
+
+def parse_hours(text: str) -> str:
+    """Extract a clean hours string like 'Closes 7PM' or 'Opens 9AM'."""
+    if not text:
+        return ""
+    text = clean_text(text)
+    # Pattern: "Opens at X" or "Closes X" or "Open until X"
+    m = re.search(r'(Opens?|Closes?|Open until)\s+\d{1,2}(:\d{2})?\s*(AM|PM|am|pm|a\.m\.|p\.m\.)', text, re.IGNORECASE)
+    if m:
+        return m.group(0).strip()
+    # Fallback: just find a time pattern
+    m = re.search(r'\d{1,2}:\d{2}\s*(AM|PM|am|pm|a\.m\.|p\.m\.)', text, re.IGNORECASE)
+    if m:
+        return m.group(0).strip()
+    return text if len(text) < 30 else ""
+
+
 def extract_place(page: Page) -> Place:
     place = Place()
 
@@ -94,13 +125,13 @@ def extract_place(page: Page) -> Place:
         '//div[contains(@class,"place-type")]',
     ])
 
-    # Introduction / description
-    place.introduction = extract_text_multi(page, [
+    # Introduction / description — clean icon noise
+    place.introduction = clean_text(extract_text_multi(page, [
         '//div[@class="WeS02d fontBodyMedium"]//div[@class="PYvSYb "]',
         '//div[contains(@class,"intro-text")]',
         '//div[@class="PYvSYb "]',
         '//div[contains(@class,"WeS02d")]',
-    ]) or "None Found"
+    ])) or "None Found"
 
     # Reviews count (aria-label is stable across localizations)
     reviews_count_raw = extract_text_multi(page, [
@@ -110,7 +141,6 @@ def extract_place(page: Page) -> Place:
     ])
     if reviews_count_raw:
         try:
-            import re
             nums = re.sub(r'[^\d]', '', reviews_count_raw)
             if nums:
                 place.reviews_count = int(nums)
@@ -147,7 +177,7 @@ def extract_place(page: Page) -> Place:
             if 'delivery' in lower or 'deliver' in lower:
                 place.store_delivery = "Yes"
 
-    # Opens at — multiple selector strategies
+    # Opens at — multiple selector strategies, clean output
     opens_at_raw = extract_text_multi(page, [
         '//button[contains(@data-item-id,"oh")]//div[contains(@class,"fontBodyMedium")]',
         '//div[@class="MkV9"]//span[@class="ZDu9vd"]//span[2]',
@@ -156,11 +186,7 @@ def extract_place(page: Page) -> Place:
         '//div[contains(@class,"open")]//span',
     ])
     if opens_at_raw:
-        parts = opens_at_raw.split('⋅')
-        if len(parts) > 1:
-            place.opens_at = parts[1].replace("\u202f", "").replace("\n", "").strip()
-        else:
-            place.opens_at = opens_at_raw.replace("\u202f", "").replace("\n", "").strip()
+        place.opens_at = parse_hours(opens_at_raw)
 
     return place
 
