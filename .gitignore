@@ -2,4 +2,4 @@ __pycache__/
 *.pyc
 result.csv
 output.csv
-playwright/.cache/ 
+playwright/.cache/ *.csv
