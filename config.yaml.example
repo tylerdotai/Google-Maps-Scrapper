@@ -1,0 +1,21 @@
+# config.yaml — default arguments for Google Maps Scraper
+# CLI flags override these values.
+
+# Browser
+headless: true
+visible: false
+stealth: true
+
+# Scraping
+total: 10
+rate_limit: 1.5   # seconds between listing clicks
+retry: 2          # retries per listing on failure
+parallel: 1        # parallel browser tabs (1–4)
+
+# Output
+format: csv       # csv or jsonl
+output: maps_results
+
+# Proxy (optional)
+# proxy: "host:port"
+# proxy: "host:port:user:pass"
